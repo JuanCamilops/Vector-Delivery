@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Vector Delivery — Simulador 3D de Cálculo Vectorial</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- Lienzo WebGL Three.js -->
+  <div id="canvas-container"></div>
+
+  <!-- Viñeta roja de impacto contra torres -->
+  <div id="damage-vignette" class="damage-vignette"></div>
+
+  <!-- HUD Superior: Título, Selector de Niveles y Herramientas -->
+  <header class="hud-top">
+    <div class="brand-box">
+      <div class="brand-badge">R³ ENGINE v2.6 HARDCORE</div>
+      <h1>VECTOR DELIVERY</h1>
+      <p id="level-subtitle">Nivel 1: Vórtice Intenso y Torres</p>
+    </div>
+
+    <div class="formula-banner" id="formula-display">
+      <span class="formula-label">CAMPO ACTIVO:</span>
+      <code id="active-equation">F(x, y, z) = (-0.48z, 2.0·sin(0.2x), 0.48x)</code>
+    </div>
+
+    <div class="toolbar">
+      <select id="level-select" aria-label="Seleccionar Nivel">
+        <option value="0">Nivel 1: Vórtice Intenso y Torres</option>
+        <option value="1">Nivel 2: Gradiente ∇f y Repulsión</option>
+        <option value="2">Nivel 3: Cañón de Flujo y Escudo Omega</option>
+        <option value="3">Nivel 4: Vórtices (∇×F) y Lorentz</option>
+      </select>
+      <button id="btn-professor" class="hud-btn prof-btn" title="Abrir Editor de Ecuaciones en Vivo">
+        🎓 Modo Profesor
+      </button>
+      <button id="btn-grid" class="hud-btn active" title="Mostrar/Ocultar Malla Vectorial [V]">
+        Malla 3D <span class="key-hint">[V]</span>
+      </button>
+      <button id="btn-pause" class="hud-btn" title="Modo Inspección Académica [P]">
+        Inspección <span class="key-hint">[P]</span>
+      </button>
+      <button id="btn-touch-toggle" class="hud-btn" title="Alternar Controles Táctiles">
+        📱 Táctil
+      </button>
+      <button id="btn-reset" class="hud-btn danger" title="Reiniciar Nivel [R]">
+        Reiniciar <span class="key-hint">[R]</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Panel Izquierdo: Telemetría Matemática en Tiempo Real -->
+  <aside class="hud-telemetry" id="telemetry-panel">
+    <h2>TELEMETRÍA VECTORIAL</h2>
+
+    <div class="telemetry-group">
+      <span class="t-label">Posición r(t) = (x, y, z)</span>
+      <span class="t-value mono" id="val-pos">(0.0, 0.0, 0.0)</span>
+    </div>
+
+    <div class="telemetry-group">
+      <span class="t-label">
+        <span class="dot cyan"></span> Velocidad v <small>(‖v‖)</small>
+      </span>
+      <span class="t-value mono" id="val-vel">(0.0, 0.0, 0.0) [0.0]</span>
+    </div>
+
+    <div class="telemetry-group">
+      <span class="t-label">
+        <span class="dot magenta"></span> Campo F(r) <small>(‖F‖)</small>
+      </span>
+      <span class="t-value mono" id="val-field">(0.0, 0.0, 0.0) [0.0]</span>
+    </div>
+
+    <div class="telemetry-group">
+      <span class="t-label">Divergencia ∇ · F</span>
+      <span class="t-value mono" id="val-div">0.00 (Incompresible)</span>
+    </div>
+
+    <div class="telemetry-group">
+      <span class="t-label">
+        <span class="dot gold"></span> Gradiente ∇f (Potencial)
+      </span>
+      <span class="t-value mono" id="val-grad">(0.0, 0.0, 0.0)</span>
+    </div>
+
+    <div class="telemetry-group">
+      <span class="t-label">Flujo Acumulado Φ = ∬(F·n)dS</span>
+      <div class="progress-track">
+        <div class="progress-fill flux" id="bar-flux" style="width: 0%"></div>
+      </div>
+      <span class="t-value mono" id="val-flux">0.0 / 135.0 Wb</span>
+    </div>
+
+    <div class="telemetry-group">
+      <span class="t-label">Integridad del Casco (Colisiones / Flujo)</span>
+      <div class="progress-track">
+        <div class="progress-fill energy" id="bar-energy" style="width: 100%"></div>
+      </div>
+      <span class="t-value mono" id="val-energy">100%</span>
+    </div>
+
+    <div class="mission-box" id="mission-status">
+      <strong>Misión:</strong> Recoge el paquete en <span class="highlight-cyan">Plataforma Alfa</span> y entrégalo en <span class="highlight-green">Plataforma Destino</span>.
+    </div>
+  </aside>
+
+  <!-- Panel Inferior Derecho: Operadores Avanzados (Rotacional, Lorentz, Integral de Línea) -->
+  <aside class="hud-operators" id="vector-advanced-telemetry">
+    <h3>OPERADORES AVANZADOS</h3>
+    <div class="op-row"><span>‖∇×F‖ Rotacional:</span> <b class="mono" id="val-curl">0.000</b></div>
+    <div class="op-row"><span>Campo:</span> <b class="mono" id="val-conservative">No Conservativo</b></div>
+    <div class="op-row"><span>‖F_L‖ Lorentz:</span> <b class="mono" id="val-lorentz">0.00 N</b></div>
+    <div class="op-row"><span>W = ∫ F·dr:</span> <b class="mono" id="val-work">0.00 J</b></div>
+    <div id="val-slingshot" class="slingshot-badge hidden">⚡ SLINGSHOT ACTIVO</div>
+  </aside>
+
+  <!-- Panel Derecho: MODO PROFESOR (Editor de Ecuaciones en Vivo) -->
+  <aside class="professor-panel hidden" id="professor-panel">
+    <div class="prof-header">
+      <div>
+        <span class="prof-tag">LABORATORIO EN VIVO</span>
+        <h2>MODO PROFESOR: F(x, y, z, t)</h2>
+      </div>
+      <button id="btn-close-prof" class="icon-close" title="Cerrar panel">✕</button>
+    </div>
+
+    <p class="prof-help">
+      Define un campo vectorial personalizado en <b>R³</b>. Variables permitidas: <code>x, y, z, t</code> y funciones <code>sin, cos, tan, sqrt, abs, exp, log, pow, PI</code>.
+    </p>
+
+    <div class="preset-row">
+      <label for="prof-preset">Presets rápidos:</label>
+      <select id="prof-preset">
+        <option value="">-- Seleccionar ejemplo --</option>
+        <option value="vortex">Vórtice Huracanado</option>
+        <option value="source">Fuente Explosiva (∇·F &gt; 0)</option>
+        <option value="sink">Sumidero Central (∇·F &lt; 0)</option>
+        <option value="helical">Campo Helicoidal Temporal (t)</option>
+        <option value="saddle">Punto Silla Hiperbólico</option>
+      </select>
+    </div>
+
+    <div class="eq-input-group">
+      <label for="input-px"><span class="comp-badge i">i</span> Componente P(x, y, z, t):</label>
+      <input type="text" id="input-px" class="mono" value="-0.48 * z" spellcheck="false" />
+    </div>
+
+    <div class="eq-input-group">
+      <label for="input-qy"><span class="comp-badge j">j</span> Componente Q(x, y, z, t):</label>
+      <input type="text" id="input-qy" class="mono" value="2.0 * sin(0.2 * x)" spellcheck="false" />
+    </div>
+
+    <div class="eq-input-group">
+      <label for="input-rz"><span class="comp-badge k">k</span> Componente R(x, y, z, t):</label>
+      <input type="text" id="input-rz" class="mono" value="0.48 * x" spellcheck="false" />
+    </div>
+
+    <div class="eq-input-group">
+      <label for="input-pot"><span class="comp-badge f">f</span> Potencial Escalar f(x, y, z) (opcional para ∇f):</label>
+      <input type="text" id="input-pot" class="mono" value="200 - 0.2 * (x^2 + (y - 20)^2 + z^2)" spellcheck="false" />
+    </div>
+
+    <div id="prof-feedback" class="prof-feedback">
+      Listo para evaluar ecuaciones personalizadas.
+    </div>
+
+    <div class="prof-actions">
+      <button id="btn-apply-field" class="primary-btn">Aplicar Campo en R³</button>
+      <button id="btn-restore-level-field" class="hud-btn">Restaurar Nivel</button>
+    </div>
+  </aside>
+
+  <!-- Indicador de Modo Inspección Académica -->
+  <div id="inspection-banner" class="inspection-banner hidden">
+    ⏸ MODO INSPECCIÓN ACADÉMICA ACTIVO — Arrastra para rotar 360° y analizar los vectores v, F y ∇f
+  </div>
+
+  <!-- Modal de Victoria / Nivel Completado -->
+  <div id="level-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-badge">ENTREGA COMPLETADA</div>
+      <h2 id="modal-title">¡Paquete Entregado con Éxito!</h2>
+      <p id="modal-desc">Has navegado exitosamente el campo vectorial aplicando cálculo multivariable.</p>
+      <div class="modal-stats" id="modal-stats"></div>
+      <div class="modal-actions">
+        <button id="btn-next-level" class="primary-btn">Siguiente Nivel →</button>
+        <button id="btn-replay-level" class="hud-btn">Repetir Nivel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles Táctiles para Dispositivos Móviles -->
+  <div id="mobile-controls" class="mobile-controls">
+    <!-- Joystick Izquierdo: Movimiento Horizontal (X, Z) -->
+    <div id="joystick-zone" class="joystick-zone" aria-label="Joystick movimiento horizontal">
+      <div id="joystick-base" class="joystick-base">
+        <div class="joystick-crosshair"></div>
+        <div id="joystick-stick" class="joystick-stick"></div>
+      </div>
+      <span class="control-caption">PLANO X-Z</span>
+    </div>
+
+    <!-- Botones Centrales de Acción Matemática -->
+    <div class="mobile-actions">
+      <button id="m-btn-hook" class="m-action-btn gold" aria-label="Activar Gancho de Gradiente">
+        ∇f GANCHO
+      </button>
+      <button id="m-btn-grid" class="m-action-btn" aria-label="Alternar Malla Vectorial">
+        MALLA
+      </button>
+    </div>
+
+    <!-- Flechas Derechas: Movimiento Vertical (+Y / -Y) -->
+    <div class="vertical-controls" aria-label="Controles de altitud eje Y">
+      <button id="btn-up" class="v-arrow-btn" aria-label="Subir en eje Y">
+        ▲
+        <span>+Y</span>
+      </button>
+      <button id="btn-down" class="v-arrow-btn" aria-label="Bajar en eje Y">
+        ▼
+        <span>-Y</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Ayuda Rápida Escritorio -->
+  <footer class="desktop-hints">
+    <span><b>WASD / Flechas:</b> Plano Horizontal</span>
+    <span><b>Espacio / Shift:</b> Subir / Bajar</span>
+    <span><b>E:</b> Gancho ∇f</span>
+    <span><b>V:</b> Malla 3D</span>
+    <span><b>P:</b> Inspección</span>
+    <span><b>1-4:</b> Niveles</span>
+    <span><b>⚠ Torres sólidas:</b> Quitan energía</span>
+  </footer>
+
+  <!-- Import Map para Three.js ES6 -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="js/game.js"></script>
+</body>
+</html>
